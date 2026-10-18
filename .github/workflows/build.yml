@@ -1,0 +1,66 @@
+name: Build Windows App (Manual & Release)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional release version tag (e.g. v1.0.0) to publish a GitHub Release'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build & Package Multi-Speaker Sync Studio (Windows x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Application Icon & Compile Native WASAPI Audio Engine
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/generate-icon.ps1
+          powershell -ExecutionPolicy Bypass -File scripts/build-native.ps1
+
+      - name: Build Frontend & Electron Main Process
+        run: npm run build
+
+      - name: Package Standalone Windows Application
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/package-app.ps1
+
+      - name: Create Distributable ZIP Archive
+        shell: powershell
+        run: |
+          Compress-Archive -Path "release\Multi-Speaker Sync Studio\*" -DestinationPath "release\Multi-Speaker-Sync-Studio-win32-x64.zip" -Force
+
+      - name: Upload Application Artifact (Downloadable from Actions tab)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Multi-Speaker-Sync-Studio-Windows-x64
+          path: release/Multi-Speaker-Sync-Studio-win32-x64.zip
+          retention-days: 90
+
+      - name: Publish GitHub Release (When release_tag is provided)
+        if: ${{ github.event.inputs.release_tag != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: Multi-Speaker Sync Studio ${{ github.event.inputs.release_tag }}
+          files: release/Multi-Speaker-Sync-Studio-win32-x64.zip
+          generate_release_notes: true

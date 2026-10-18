@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-electron/
+release/
+bin/
+*.lnk
+.taste-skill/
+.DS_Store
+Thumbs.db
+*.log

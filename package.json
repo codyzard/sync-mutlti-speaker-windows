@@ -1,0 +1,30 @@
+{
+  "name": "windows-multi-speaker-controller",
+  "version": "1.0.0",
+  "description": "Windows Multi-Speaker Audio Router & Hardware Volume Sync Controller (Electron + TypeScript + WASAPI)",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "build:native": "powershell -ExecutionPolicy Bypass -File scripts/build-native.ps1",
+    "dev:vite": "vite",
+    "dev:electron": "tsc -p tsconfig.electron.json && electron .",
+    "dev": "npm.cmd run build:native && tsc -p tsconfig.electron.json && concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "build": "npm.cmd run build:native && tsc -p tsconfig.electron.json && vite build",
+    "package": "npm.cmd run build && powershell -ExecutionPolicy Bypass -File scripts/package-app.ps1",
+    "start": "npm.cmd run build && electron ."
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "electron": "^34.0.0",
+    "lucide-react": "^0.475.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.1.0",
+    "wait-on": "^8.0.0"
+  }
+}

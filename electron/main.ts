@@ -290,7 +290,7 @@ function createTray() {
   const iconPath = getAppIconPath();
   let icon = iconPath ? nativeImage.createFromPath(iconPath) : null;
   if (!icon || icon.isEmpty()) {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"><rect x="1" y="1" width="22" height="22" rx="5" fill="#1c1c19" stroke="#34342f" stroke-width="1.5"/><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 5v14" stroke="#e06d3b" stroke-width="2" stroke-linecap="square"/></svg>`;
     icon = nativeImage.createFromDataURL(
       `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
     );

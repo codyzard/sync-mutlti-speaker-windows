@@ -13,8 +13,13 @@ class StampIcon
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool EndUpdateResource(IntPtr hUpdate, bool fDiscard);
 
+    [DllImport("shell32.dll")]
+    static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
+
     static readonly IntPtr RT_ICON = (IntPtr)3;
     static readonly IntPtr RT_GROUP_ICON = (IntPtr)14;
+    const int SHCNE_ASSOCCHANGED = 0x08000000;
+    const uint SHCNF_IDLIST = 0x0000;
 
     static int Main(string[] args)
     {
@@ -88,6 +93,7 @@ class StampIcon
 
                     // Update RT_ICON for language 1033 (en-US) and 0 (neutral)
                     UpdateResource(hUpdate, RT_ICON, (IntPtr)iconId, 1033, imgData, (uint)imgData.Length);
+                    UpdateResource(hUpdate, RT_ICON, (IntPtr)iconId, 0, imgData, (uint)imgData.Length);
                 }
 
                 grpBw.Flush();
@@ -96,7 +102,9 @@ class StampIcon
                 // Electron's main icon group resource is named "IDR_MAINFRAME" or ID 1
                 IntPtr idrMainFrame = Marshal.StringToHGlobalUni("IDR_MAINFRAME");
                 UpdateResource(hUpdate, RT_GROUP_ICON, idrMainFrame, 1033, grpBytes, (uint)grpBytes.Length);
+                UpdateResource(hUpdate, RT_GROUP_ICON, idrMainFrame, 0, grpBytes, (uint)grpBytes.Length);
                 UpdateResource(hUpdate, RT_GROUP_ICON, (IntPtr)1, 1033, grpBytes, (uint)grpBytes.Length);
+                UpdateResource(hUpdate, RT_GROUP_ICON, (IntPtr)1, 0, grpBytes, (uint)grpBytes.Length);
                 Marshal.FreeHGlobal(idrMainFrame);
             }
 
@@ -106,6 +114,9 @@ class StampIcon
                 return 3;
             }
         }
+
+        // Flush Windows Explorer icon cache immediately
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, IntPtr.Zero, IntPtr.Zero);
 
         Console.WriteLine("Successfully stamped icon onto " + exePath);
         return 0;

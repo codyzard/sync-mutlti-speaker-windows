@@ -55,12 +55,17 @@ $icoPath = Join-Path $projectDir "assets\icon.ico"
 & $stampExe $exeFile $icoPath
 
 # Also create a convenient shortcut right at the root of f:\audio-controller with the custom icon
+$lnkPath = Join-Path $projectDir "Multi-Speaker Sync Studio.lnk"
+if (Test-Path $lnkPath) { Remove-Item $lnkPath -Force }
 $WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut((Join-Path $projectDir "Multi-Speaker Sync Studio.lnk"))
+$Shortcut = $WshShell.CreateShortcut($lnkPath)
 $Shortcut.TargetPath = $exeFile
 $Shortcut.WorkingDirectory = $releaseDir
-$Shortcut.IconLocation = "$icoPath,0"
+$Shortcut.IconLocation = "$exeFile,0"
 $Shortcut.Description = "Windows Multi-Speaker Sync Studio"
 $Shortcut.Save()
+
+# Refresh Windows Explorer icon cache
+& ie4uinit.exe -show -ErrorAction SilentlyContinue
 
 Write-Host "Successfully built standalone app with custom icon at: $exeFile" -ForegroundColor Green

@@ -22,6 +22,7 @@ interface SpeakerPreset {
 
 interface AppSettings {
   language?: 'vi' | 'en';
+  deviceOrder?: string[];
   launchAtStartup: boolean;
   startMinimized: boolean;
   closeToTray: boolean;
@@ -49,6 +50,7 @@ const configPath = path.join(app.getPath('userData'), 'speaker-sync-config.json'
 
 const defaultSettings: AppSettings = {
   language: 'vi',
+  deviceOrder: [],
   launchAtStartup: false,
   startMinimized: false,
   closeToTray: true,
@@ -101,15 +103,21 @@ function sendEngineCommand(cmd: string) {
 function enrichAndSendState(rawState: Record<string, unknown>) {
   latestEngineRawState = rawState;
   const rawDevices = (rawState.devices as Array<Record<string, unknown>>) || [];
-  const enrichedDevices = rawDevices.map((d) => {
-    const id = String(d.id || '');
-    const saved = persistedConfig.speakers[id];
-    return {
-      ...d,
-      customLabel: saved?.customLabel || '',
-      hidden: Boolean(saved?.hidden),
-    };
-  });
+  const orderList = persistedConfig.settings.deviceOrder || [];
+
+  const enrichedDevices = rawDevices
+    .map((d, originalIdx) => {
+      const id = String(d.id || '');
+      const saved = persistedConfig.speakers[id];
+      const orderIdx = orderList.indexOf(id);
+      return {
+        ...d,
+        customLabel: saved?.customLabel || '',
+        hidden: Boolean(saved?.hidden),
+        _sortKey: orderIdx !== -1 ? orderIdx : 10000 + originalIdx,
+      };
+    })
+    .sort((a, b) => a._sortKey - b._sortKey);
 
   mainWindow?.webContents.send('audio:state', {
     ...rawState,
@@ -514,11 +522,17 @@ app.whenReady().then(() => {
       syncWindowsStartupRegistry(persistedConfig.settings.launchAtStartup);
     }
 
-    sendEngineCommand(
-      `SET_ENGINE_SETTINGS|${persistedConfig.settings.bufferMs}|${
-        persistedConfig.settings.autoFailover ? '1' : '0'
-      }|${persistedConfig.settings.autoReconnect ? '1' : '0'}`
-    );
+    if (
+      patch.bufferMs !== undefined ||
+      patch.autoFailover !== undefined ||
+      patch.autoReconnect !== undefined
+    ) {
+      sendEngineCommand(
+        `SET_ENGINE_SETTINGS|${persistedConfig.settings.bufferMs}|${
+          persistedConfig.settings.autoFailover ? '1' : '0'
+        }|${persistedConfig.settings.autoReconnect ? '1' : '0'}`
+      );
+    }
 
     if (latestEngineRawState) enrichAndSendState(latestEngineRawState);
   });

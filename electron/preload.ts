@@ -34,6 +34,7 @@ export interface SpeakerPreset {
 
 export interface AppSettings {
   language?: 'vi' | 'en';
+  deviceOrder?: string[];
   launchAtStartup: boolean;
   startMinimized: boolean;
   closeToTray: boolean;

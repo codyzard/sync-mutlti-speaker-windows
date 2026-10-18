@@ -44,6 +44,11 @@ export const translations = {
     // Filter Bar
     searchPlaceholder: 'Tìm kiếm tên loa hoặc cổng output...',
     showHiddenLabel: 'Hiện cả các cổng Output đã ẩn',
+    dragHint: 'Kéo thả thẻ loa để sắp xếp vị trí ưu tiên',
+    pinToTopTooltip: 'Đưa loa này lên vị trí đầu tiên',
+    pinToTopBtn: 'Đưa lên đầu',
+    resetOrderBtn: 'Đặt lại thứ tự',
+    toastOrderUpdated: 'Đã lưu thứ tự sắp xếp loa.',
 
     // Speaker Card
     tagDisconnected: 'Ngắt Bluetooth (Tự kết nối khi bật lại)',
@@ -164,6 +169,11 @@ export const translations = {
     // Filter Bar
     searchPlaceholder: 'Filter by speaker name or endpoint...',
     showHiddenLabel: 'Show hidden output endpoints',
+    dragHint: 'Drag and drop speaker cards to customize order',
+    pinToTopTooltip: 'Pin this speaker to the top position',
+    pinToTopBtn: 'Pin to Top',
+    resetOrderBtn: 'Reset Order',
+    toastOrderUpdated: 'Speaker display order saved.',
 
     // Speaker Card
     tagDisconnected: 'Bluetooth Offline (Auto-Reconnects on Power On)',

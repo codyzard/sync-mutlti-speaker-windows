@@ -619,11 +619,101 @@ input[type='range']::-webkit-slider-thumb:hover {
   background: #131814;
 }
 
+.speaker-card.dragging,
+.setting-row.dragging {
+  opacity: 0.42;
+  border-style: dashed;
+  border-color: var(--accent-primary);
+}
+
+.speaker-card.drag-over,
+.setting-row.drag-over {
+  border-color: var(--accent-primary);
+  background: var(--bg-surface-elevated);
+  transform: translateY(-2px);
+}
+
 .card-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+}
+
+.card-header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.drag-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  color: var(--text-muted);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  cursor: grab;
+  transition: all 0.14s ease;
+}
+
+.drag-handle:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--bg-surface-elevated);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.pin-top-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.pin-top-btn:hover {
+  color: var(--accent-primary);
+  background: var(--bg-canvas);
+  border-color: var(--border-subtle);
+}
+
+.drag-hint-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
 }
 
 .speaker-name {

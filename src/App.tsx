@@ -20,6 +20,9 @@ import {
   Monitor,
   Bluetooth,
   Globe,
+  GripVertical,
+  ArrowUpToLine,
+  RotateCcw,
 } from 'lucide-react';
 import { AppSettings, EngineState, SpeakerDevice } from './types';
 import { Language, translations } from './i18n';
@@ -34,6 +37,10 @@ export const App: React.FC = () => {
   const [editingLabel, setEditingLabel] = useState('');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
+  // Drag-and-drop state
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
   const [state, setState] = useState<EngineState>({
     type: 'state',
     routingEnabled: true,
@@ -46,6 +53,7 @@ export const App: React.FC = () => {
     presets: [],
     settings: {
       language: 'vi',
+      deviceOrder: [],
       launchAtStartup: false,
       startMinimized: false,
       closeToTray: true,
@@ -122,6 +130,61 @@ export const App: React.FC = () => {
     window.audioApi.updateAppSettings(patch);
   };
 
+  const handleReorderDevices = (sourceId: string, targetId: string) => {
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    const currentList = [...state.devices];
+    const fromIndex = currentList.findIndex((d) => d.id === sourceId);
+    const toIndex = currentList.findIndex((d) => d.id === targetId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const [moved] = currentList.splice(fromIndex, 1);
+    currentList.splice(toIndex, 0, moved);
+    const newOrder = currentList.map((d) => d.id);
+
+    // Optimistic UI update
+    setState((prev) => ({
+      ...prev,
+      devices: currentList,
+      settings: {
+        ...prev.settings,
+        deviceOrder: newOrder,
+      },
+    }));
+    handleUpdateSettings({ deviceOrder: newOrder });
+  };
+
+  const handlePinToTop = (deviceId: string) => {
+    const currentList = [...state.devices];
+    const idx = currentList.findIndex((d) => d.id === deviceId);
+    if (idx <= 0) return;
+
+    const [moved] = currentList.splice(idx, 1);
+    currentList.unshift(moved);
+    const newOrder = currentList.map((d) => d.id);
+
+    setState((prev) => ({
+      ...prev,
+      devices: currentList,
+      settings: {
+        ...prev.settings,
+        deviceOrder: newOrder,
+      },
+    }));
+    handleUpdateSettings({ deviceOrder: newOrder });
+    showToast(t.toastOrderUpdated);
+  };
+
+  const handleResetOrder = () => {
+    handleUpdateSettings({ deviceOrder: [] });
+    window.audioApi.refreshDevices();
+    showToast(t.toastOrderUpdated);
+  };
+
+  const preventSliderDrag = (e: React.DragEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   const filteredDevices = state.devices.filter((d) => {
     if (!state.settings?.showHiddenDevices && d.hidden && activeTab === 'mixer') {
       return false;
@@ -134,6 +197,10 @@ export const App: React.FC = () => {
     );
   });
 
+  const hasCustomOrder = Boolean(
+    state.settings?.deviceOrder && state.settings.deviceOrder.length > 0
+  );
+
   return (
     <div className="desktop-layout">
       {/* Left Sidebar Navigation */}
@@ -141,7 +208,15 @@ export const App: React.FC = () => {
         <div>
           <div className="sidebar-brand">
             <div className="brand-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e06d3b" strokeWidth="2" strokeLinecap="square">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#e06d3b"
+                strokeWidth="2"
+                strokeLinecap="square"
+              >
                 <path d="M3 10v4M7 7v10M11 4v16M15 8v8M19 5v14" />
               </svg>
             </div>
@@ -371,13 +446,25 @@ export const App: React.FC = () => {
 
             {/* Filter & Quick Actions Bar */}
             <div className="filter-bar">
-              <input
-                type="text"
-                className="search-input"
-                placeholder={t.searchPlaceholder}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder={t.searchPlaceholder}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <span className="drag-hint-badge">
+                  <GripVertical size={13} color="#e06d3b" />
+                  {t.dragHint}
+                </span>
+                {hasCustomOrder && (
+                  <button className="btn btn-sm" onClick={handleResetOrder}>
+                    <RotateCcw size={12} />
+                    {t.resetOrderBtn}
+                  </button>
+                )}
+              </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <label
@@ -402,36 +489,87 @@ export const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Speaker Cards Grid */}
+            {/* Speaker Cards Grid (Drag & Drop Enabled) */}
             <section className="speakers-grid">
-              {filteredDevices.map((dev) => {
+              {filteredDevices.map((dev, idx) => {
                 const isConnected = dev.connected !== false;
                 const isOutputActive = isConnected && (dev.isMaster || dev.enabled);
                 const displayName = dev.customLabel || dev.name;
+                const isDragging = draggedId === dev.id;
+                const isDragOver = dragOverId === dev.id && draggedId !== dev.id;
 
                 return (
                   <div
                     key={dev.id}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggedId(dev.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', dev.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (dragOverId !== dev.id) {
+                        setDragOverId(dev.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverId === dev.id) {
+                        setDragOverId(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const srcId = draggedId || e.dataTransfer.getData('text/plain');
+                      if (srcId && srcId !== dev.id) {
+                        handleReorderDevices(srcId, dev.id);
+                      }
+                      setDraggedId(null);
+                      setDragOverId(null);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedId(null);
+                      setDragOverId(null);
+                    }}
                     className={`speaker-card ${dev.isMaster ? 'master-card' : ''} ${
                       !dev.isMaster && dev.enabled && isConnected ? 'active' : ''
-                    }`}
+                    } ${isDragging ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
                     style={!isConnected ? { opacity: 0.65, borderStyle: 'dashed' } : undefined}
                   >
                     <div className="card-header">
-                      <div>
-                        <div className="speaker-name">{displayName}</div>
-                        {dev.customLabel && <div className="speaker-hw-name">{dev.name}</div>}
-                        <div className="speaker-tags">
-                          {!isConnected ? (
-                            <span className="tag offline-tag">{t.tagDisconnected}</span>
-                          ) : dev.isMaster ? (
-                            <span className="tag master-tag">{t.tagMaster}</span>
-                          ) : dev.enabled ? (
-                            <span className="tag sync-on">{t.tagSynced}</span>
-                          ) : (
-                            <span className="tag">{t.tagIdle}</span>
+                      <div className="card-header-left">
+                        <div className="drag-controls">
+                          <span className="drag-handle" title={t.dragHint}>
+                            <GripVertical size={14} />
+                          </span>
+                          {idx > 0 && (
+                            <button
+                              type="button"
+                              className="pin-top-btn"
+                              title={t.pinToTopTooltip}
+                              onClick={() => handlePinToTop(dev.id)}
+                            >
+                              <ArrowUpToLine size={12} />
+                            </button>
                           )}
-                          {dev.hidden && <span className="tag">{t.tagHidden}</span>}
+                        </div>
+
+                        <div style={{ minWidth: 0 }}>
+                          <div className="speaker-name">{displayName}</div>
+                          {dev.customLabel && <div className="speaker-hw-name">{dev.name}</div>}
+                          <div className="speaker-tags">
+                            {!isConnected ? (
+                              <span className="tag offline-tag">{t.tagDisconnected}</span>
+                            ) : dev.isMaster ? (
+                              <span className="tag master-tag">{t.tagMaster}</span>
+                            ) : dev.enabled ? (
+                              <span className="tag sync-on">{t.tagSynced}</span>
+                            ) : (
+                              <span className="tag">{t.tagIdle}</span>
+                            )}
+                            {dev.hidden && <span className="tag">{t.tagHidden}</span>}
+                          </div>
                         </div>
                       </div>
 
@@ -445,7 +583,10 @@ export const App: React.FC = () => {
                           <span className="switch-slider" />
                         </label>
                       ) : (
-                        <span className="badge-master" style={{ fontSize: '0.64rem', padding: '3px 7px' }}>
+                        <span
+                          className="badge-master"
+                          style={{ fontSize: '0.64rem', padding: '3px 7px' }}
+                        >
                           MASTER
                         </span>
                       )}
@@ -458,6 +599,8 @@ export const App: React.FC = () => {
                       </div>
                       <input
                         type="range"
+                        draggable
+                        onDragStart={preventSliderDrag}
                         min={0}
                         max={1}
                         step={0.01}
@@ -489,6 +632,8 @@ export const App: React.FC = () => {
                           </div>
                           <input
                             type="range"
+                            draggable
+                            onDragStart={preventSliderDrag}
                             min={0.1}
                             max={2.0}
                             step={0.05}
@@ -509,6 +654,8 @@ export const App: React.FC = () => {
                           </div>
                           <input
                             type="range"
+                            draggable
+                            onDragStart={preventSliderDrag}
                             min={0}
                             max={350}
                             step={5}
@@ -532,6 +679,8 @@ export const App: React.FC = () => {
                           </div>
                           <input
                             type="range"
+                            draggable
+                            onDragStart={preventSliderDrag}
                             min={-1}
                             max={1}
                             step={0.05}
@@ -589,93 +738,165 @@ export const App: React.FC = () => {
           </>
         )}
 
-        {/* TAB 2: OUTPUT DEVICE MANAGER */}
+        {/* TAB 2: OUTPUT DEVICE MANAGER (Also Drag & Drop Enabled) */}
         {activeTab === 'devices' && (
           <section className="settings-section">
-            <h3>
-              <Layers size={16} />
-              {t.allDevicesHeading} ({state.devices.length})
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3>
+                <Layers size={16} />
+                {t.allDevicesHeading} ({state.devices.length})
+              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="drag-hint-badge">
+                  <GripVertical size={13} color="#e06d3b" />
+                  {t.dragHint}
+                </span>
+                {hasCustomOrder && (
+                  <button className="btn btn-sm" onClick={handleResetOrder}>
+                    <RotateCcw size={12} />
+                    {t.resetOrderBtn}
+                  </button>
+                )}
+              </div>
+            </div>
             <p style={{ fontSize: '0.8rem', color: '#9e9c94' }}>{t.allDevicesSub}</p>
 
-            {state.devices.map((dev) => (
-              <div key={dev.id} className="setting-row">
-                <div className="setting-info" style={{ flex: 1 }}>
-                  <h4>
-                    {dev.customLabel ? `${dev.customLabel} ` : ''}
-                    <span style={{ color: '#9e9c94', fontWeight: 400 }}>{dev.name}</span>
-                  </h4>
-                  <p>
-                    ID: {dev.id} • {t.statusLabel}:{' '}
-                    {dev.connected === false
-                      ? t.tagDisconnected
-                      : dev.isMaster
-                      ? t.tagMaster
-                      : dev.enabled
-                      ? t.tagSynced
-                      : t.tagIdle}
-                  </p>
+            {state.devices.map((dev, idx) => {
+              const isDragging = draggedId === dev.id;
+              const isDragOver = dragOverId === dev.id && draggedId !== dev.id;
 
-                  {editingId === dev.id && (
-                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                      <input
-                        type="text"
-                        className="search-input"
-                        placeholder={t.renamePlaceholder}
-                        value={editingLabel}
-                        onChange={(e) => setEditingLabel(e.target.value)}
-                      />
+              return (
+                <div
+                  key={dev.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedId(dev.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', dev.id);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (dragOverId !== dev.id) {
+                      setDragOverId(dev.id);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverId === dev.id) {
+                      setDragOverId(null);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const srcId = draggedId || e.dataTransfer.getData('text/plain');
+                    if (srcId && srcId !== dev.id) {
+                      handleReorderDevices(srcId, dev.id);
+                    }
+                    setDraggedId(null);
+                    setDragOverId(null);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedId(null);
+                    setDragOverId(null);
+                  }}
+                  className={`setting-row ${isDragging ? 'dragging' : ''} ${
+                    isDragOver ? 'drag-over' : ''
+                  }`}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+                    <span className="drag-handle" title={t.dragHint}>
+                      <GripVertical size={15} />
+                    </span>
+
+                    <div className="setting-info" style={{ flex: 1 }}>
+                      <h4>
+                        {dev.customLabel ? `${dev.customLabel} ` : ''}
+                        <span style={{ color: '#9e9c94', fontWeight: 400 }}>{dev.name}</span>
+                      </h4>
+                      <p>
+                        ID: {dev.id} • {t.statusLabel}:{' '}
+                        {dev.connected === false
+                          ? t.tagDisconnected
+                          : dev.isMaster
+                          ? t.tagMaster
+                          : dev.enabled
+                          ? t.tagSynced
+                          : t.tagIdle}
+                      </p>
+
+                      {editingId === dev.id && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <input
+                            type="text"
+                            className="search-input"
+                            placeholder={t.renamePlaceholder}
+                            value={editingLabel}
+                            onChange={(e) => setEditingLabel(e.target.value)}
+                          />
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => {
+                              handleSpeakerConfig(dev, { customLabel: editingLabel.trim() });
+                              setEditingId(null);
+                              showToast(t.toastSavedName);
+                            }}
+                          >
+                            {t.saveBtn}
+                          </button>
+                          <button className="btn btn-sm" onClick={() => setEditingId(null)}>
+                            {t.cancelBtn}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {idx > 0 && (
+                      <button
+                        className="btn btn-sm"
+                        title={t.pinToTopTooltip}
+                        onClick={() => handlePinToTop(dev.id)}
+                      >
+                        <ArrowUpToLine size={13} />
+                        {t.pinToTopBtn}
+                      </button>
+                    )}
+
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => {
+                        setEditingId(dev.id);
+                        setEditingLabel(dev.customLabel || '');
+                      }}
+                    >
+                      <Edit3 size={13} />
+                      {t.renameBtn}
+                    </button>
+
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => {
+                        handleSpeakerConfig(dev, { hidden: !dev.hidden });
+                        showToast(!dev.hidden ? t.toastHidden : t.toastShown);
+                      }}
+                    >
+                      {dev.hidden ? <Eye size={13} /> : <EyeOff size={13} />}
+                      {dev.hidden ? t.unhideBtn : t.hideBtn}
+                    </button>
+
+                    {!dev.isMaster && dev.connected !== false && (
                       <button
                         className="btn btn-primary btn-sm"
-                        onClick={() => {
-                          handleSpeakerConfig(dev, { customLabel: editingLabel.trim() });
-                          setEditingId(null);
-                          showToast(t.toastSavedName);
-                        }}
+                        onClick={() => window.audioApi.setDefaultDevice(dev.id)}
                       >
-                        {t.saveBtn}
+                        {t.makeMasterBtn}
                       </button>
-                      <button className="btn btn-sm" onClick={() => setEditingId(null)}>
-                        {t.cancelBtn}
-                      </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => {
-                      setEditingId(dev.id);
-                      setEditingLabel(dev.customLabel || '');
-                    }}
-                  >
-                    <Edit3 size={13} />
-                    {t.renameBtn}
-                  </button>
-
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => {
-                      handleSpeakerConfig(dev, { hidden: !dev.hidden });
-                      showToast(!dev.hidden ? t.toastHidden : t.toastShown);
-                    }}
-                  >
-                    {dev.hidden ? <Eye size={13} /> : <EyeOff size={13} />}
-                    {dev.hidden ? t.unhideBtn : t.hideBtn}
-                  </button>
-
-                  {!dev.isMaster && dev.connected !== false && (
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => window.audioApi.setDefaultDevice(dev.id)}
-                    >
-                      {t.makeMasterBtn}
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </section>
         )}
 

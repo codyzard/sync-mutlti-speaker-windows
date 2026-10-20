@@ -94,13 +94,53 @@ function savePersistedConfig() {
   }
 }
 
+process.on('uncaughtException', (err: NodeJS.ErrnoException) => {
+  if (err && (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED')) {
+    return;
+  }
+  console.error('Uncaught exception in main process:', err);
+});
+
 function sendEngineCommand(cmd: string) {
-  if (engineProc && !engineProc.killed && engineProc.stdin.writable) {
-    engineProc.stdin.write(cmd + '\n');
+  if (
+    !isQuitting &&
+    engineProc &&
+    !engineProc.killed &&
+    engineProc.exitCode === null &&
+    engineProc.stdin &&
+    !engineProc.stdin.destroyed &&
+    engineProc.stdin.writable
+  ) {
+    try {
+      engineProc.stdin.write(cmd + '\n', () => {});
+    } catch {
+      // ignore EPIPE or stream errors during exit
+    }
+  }
+}
+
+function stopAudioEngine() {
+  isQuitting = true;
+  const proc = engineProc;
+  engineProc = null;
+  if (!proc) return;
+  try {
+    proc.removeAllListeners('exit');
+    proc.stdin?.destroy();
+    proc.stdout?.destroy();
+    proc.stderr?.destroy();
+    if (!proc.killed && proc.exitCode === null) {
+      proc.kill();
+    }
+  } catch {
+    // ignore errors when stopping child process
   }
 }
 
 function enrichAndSendState(rawState: Record<string, unknown>) {
+  if (isQuitting || !mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) {
+    return;
+  }
   latestEngineRawState = rawState;
   const rawDevices = (rawState.devices as Array<Record<string, unknown>>) || [];
   const orderList = persistedConfig.settings.deviceOrder || [];
@@ -119,15 +159,21 @@ function enrichAndSendState(rawState: Record<string, unknown>) {
     })
     .sort((a, b) => a._sortKey - b._sortKey);
 
-  mainWindow?.webContents.send('audio:state', {
-    ...rawState,
-    devices: enrichedDevices,
-    presets: persistedConfig.presets,
-    settings: persistedConfig.settings,
-  });
+  try {
+    mainWindow.webContents.send('audio:state', {
+      ...rawState,
+      devices: enrichedDevices,
+      presets: persistedConfig.presets,
+      settings: persistedConfig.settings,
+    });
+  } catch {
+    // ignore if window closed mid-send
+  }
 }
 
 function startAudioEngine() {
+  if (isQuitting) return;
+
   const exePath = app.isPackaged
     ? path.join(process.resourcesPath, 'bin', 'AudioEngine.exe')
     : path.join(__dirname, '..', 'bin', 'AudioEngine.exe');
@@ -142,8 +188,14 @@ function startAudioEngine() {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
+  engineProc.on('error', () => {});
+  engineProc.stdin.on('error', () => {});
+  engineProc.stdout.on('error', () => {});
+  engineProc.stderr.on('error', () => {});
+
   let stdoutBuffer = '';
   engineProc.stdout.on('data', (chunk: Buffer) => {
+    if (isQuitting) return;
     stdoutBuffer += chunk.toString('utf-8');
     const lines = stdoutBuffer.split(/\r?\n/);
     stdoutBuffer = lines.pop() || '';
@@ -156,7 +208,9 @@ function startAudioEngine() {
         if (parsed.type === 'state') {
           enrichAndSendState(parsed);
         } else if (parsed.type === 'error') {
-          mainWindow?.webContents.send('audio:error', parsed.message);
+          if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('audio:error', parsed.message);
+          }
         }
       } catch {
         // ignore malformed json line
@@ -230,8 +284,7 @@ function updateTrayMenu() {
     {
       label: isEn ? 'Quit Application' : 'Thoát hoàn toàn (Quit)',
       click: () => {
-        isQuitting = true;
-        sendEngineCommand('QUIT');
+        stopAudioEngine();
         app.quit();
       },
     },
@@ -570,9 +623,5 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => {
-  isQuitting = true;
-  sendEngineCommand('QUIT');
-  if (engineProc && !engineProc.killed) {
-    engineProc.kill();
-  }
+  stopAudioEngine();
 });
